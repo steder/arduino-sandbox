@@ -20,7 +20,7 @@ void writeI2CRegister8bit(int addr, int value) {
 unsigned int readI2CRegister16bit(int addr, int reg) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
-  Wire.endTransmission();
+  // Wire.endTransmission();
   delay(1000);
   Wire.requestFrom(addr, 2);
   // Wire.available()    // slave may send less than requested
