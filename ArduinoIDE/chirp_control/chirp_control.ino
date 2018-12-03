@@ -1,4 +1,3 @@
-#include <SPI.h>
 #include <Wire.h>
 #include <WiFi.h>
 
@@ -8,8 +7,31 @@ const int GPIO_RESET_PIN = 14;
 const char* wifi_ssid = "2.4-Portlandia";
 const char* wifi_password = "rulefromorbit";
 
-WiFiServer server(80);
+//WiFiServer server(80);
 
+// Bluetooth:
+
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+#define SERVICE_UUID        "9d0fda08-6347-4f9d-9c57-da70a0b6b8cd"
+#define CHARACTERISTIC_UUID "1e1aee34-f68a-4758-9a9c-5bd7f5d1eb8d"
+
+char bluetoothinfo[256] = "Hello Bluetooth World!";
+
+class OurBLECallbacks : public BLECharacteristicCallbacks {
+public:
+  void onRead(BLECharacteristic* pCharacteristic) {
+    Serial.println("Someone read our BLE data!");
+  }
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    Serial.println("Someone wrote our BLE data!");
+    strcpy(bluetoothinfo, pCharacteristic->getValue().c_str());
+    Serial.print("bluetooth info: ");
+    Serial.println(bluetoothinfo);
+  }
+};
 
 void writeI2CRegister8bit(int addr, int value) {
   Wire.beginTransmission(addr);
@@ -42,23 +64,46 @@ void setup() {
   // So we wired a GPIO pin and we need to set to high to take the chirp out of reset mode:
   pinMode(GPIO_RESET_PIN, OUTPUT);
 
-  WiFi.begin(wifi_ssid, wifi_password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+//  WiFi.begin(wifi_ssid, wifi_password);
+//
+//  while (WiFi.status() != WL_CONNECTED) {
+//    delay(500);
+//    Serial.print(".");
+//  }
+//
+//  Serial.println(F("WiFi connected"));
+//  Serial.println(F("IP address: "));
+//  Serial.println(WiFi.localIP());
 
   // Print WiFi MAC address:
-  printMacAddress();
+  //printMacAddress();
 
-  server.begin();
+  // web server setup:
+  //server.begin();
 
+  Serial.println(F("Starting BLE work!"));
+
+  BLEDevice::init("Chicken");
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+                                         CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  OurBLECallbacks *callbacks = new OurBLECallbacks();
+
+  pCharacteristic->setValue(bluetoothinfo);
+  pCharacteristic->setCallbacks(callbacks);
+  pService->start();
+  // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println(F("Characteristic defined! Now you can read it in your phone!"));
 }
 
 void loop() {
@@ -76,18 +121,21 @@ void loop() {
 //  listNetworks();
 //  delay(10000);
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  delay(100);
-  // Print WiFi MAC address:
-  printMacAddress();
+//  Serial.println(F("WiFi connected"));
+//  Serial.println(F("IP address: "));
+//  Serial.println(WiFi.localIP());
 
-  httpServer();
+  Serial.print("bluetooth storage: ");
+  Serial.println(bluetoothinfo);
+
+  delay(10000);
+  // Print WiFi MAC address:
+  //printMacAddress();
+
+  //httpServer();
 }
 
-void printMacAddress() {
+/* void printMacAddress() {
   // the MAC address of your Wifi shield
   byte mac[6];
 
@@ -105,38 +153,9 @@ void printMacAddress() {
   Serial.print(mac[1], HEX);
   Serial.print(":");
   Serial.println(mac[0], HEX);
-}
+} */
 
-void listNetworks() {
-    Serial.println("scan start");
-
-    // WiFi.scanNetworks will return the number of networks found
-    int n = WiFi.scanNetworks();
-    Serial.println("scan done");
-    if (n == 0) {
-        Serial.println("no networks found");
-    } else {
-        Serial.print(n);
-        Serial.println(" networks found");
-        for (int i = 0; i < n; ++i) {
-            // Print SSID and RSSI for each network found
-            Serial.print(i + 1);
-            Serial.print(": ");
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" (");
-            Serial.print(WiFi.RSSI(i));
-            Serial.print(")");
-            Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
-            delay(10);
-        }
-    }
-    Serial.println("");
-
-    // Wait a bit before scanning again
-    delay(5000);
-}
-
-void httpServer() {
+/* void httpServer() {
   WiFiClient client = server.available();   // listen for incoming clients
 
   if (client) {                             // if you get a client,
@@ -186,3 +205,4 @@ void httpServer() {
     Serial.println("Client Disconnected.");
   }
 }
+ */
