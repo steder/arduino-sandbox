@@ -1,8 +1,51 @@
 #include <Wire.h>
 #include <WiFi.h>
 
+char bluetoothinfo[256] = "Hello Bluetooth World!";
+
+// Graphics
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+void testscrolltext(void) {
+  display.stopscroll();
+
+  display.clearDisplay();
+
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println(bluetoothinfo);
+  display.display();      // Show initial text
+  delay(100);
+
+  // Scroll in various directions, pausing in-between:
+  display.startscrollright(0x00, 0x0F);
+  // delay(2000);
+  // display.stopscroll();
+  // delay(1000);
+  // display.startscrollleft(0x00, 0x0F);
+  // delay(2000);
+  // display.stopscroll();
+  // delay(1000);
+  // display.startscrolldiagright(0x00, 0x07);
+  // delay(2000);
+  // display.startscrolldiagleft(0x00, 0x07);
+  // delay(2000);
+  // display.stopscroll();
+  // delay(1000);
+}
+
+// Chirps
 
 const int GPIO_RESET_PIN = 14;
+
+// WIFI
 // This chip only has a 2.4GHz radio so only 2.4GHz networks will work
 const char* wifi_ssid = "2.4-Portlandia";
 const char* wifi_password = "rulefromorbit";
@@ -17,8 +60,6 @@ const char* wifi_password = "rulefromorbit";
 
 #define SERVICE_UUID        "9d0fda08-6347-4f9d-9c57-da70a0b6b8cd"
 #define CHARACTERISTIC_UUID "1e1aee34-f68a-4758-9a9c-5bd7f5d1eb8d"
-
-char bluetoothinfo[256] = "Hello Bluetooth World!";
 
 class OurBLECallbacks : public BLECharacteristicCallbacks {
 public:
@@ -58,6 +99,16 @@ void setup() {
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  // Setup Screen!
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+  }
+  display.display();
+  delay(2000); // Pause for 2 seconds
+  // Clear the buffer
+  display.clearDisplay();
+  testscrolltext();
 
   writeI2CRegister8bit(0x20, 6); //reset
 
@@ -129,6 +180,9 @@ void loop() {
   Serial.println(bluetoothinfo);
 
   delay(10000);
+
+  testscrolltext();
+
   // Print WiFi MAC address:
   //printMacAddress();
 
@@ -206,3 +260,4 @@ void loop() {
   }
 }
  */
+
