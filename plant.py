@@ -2,8 +2,10 @@
 
 import json
 
-from flask import Flask
-from flask import request
+from flask import (Flask,
+                   render_template,
+                   request)
+
 app = Flask(__name__)
 
 
@@ -17,7 +19,8 @@ METRICS = []
 
 @app.route("/")
 def hello():
-    return "Hello World!"
+    context = {}
+    return render_template("index.html", **context)
 
 
 @app.route("/metrics", methods=["GET"])
