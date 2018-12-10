@@ -1,263 +1,241 @@
 #include <Wire.h>
-#include <WiFi.h>
 
-char bluetoothinfo[256] = "Hello Bluetooth World!";
-
-// Graphics
+// Specific to Adafruit SSD1306 screens
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+// Specific to ESP32
+#include <WiFiClientSecure.h>
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 32 // OLED display height, in pixels
+
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-void testscrolltext(void) {
-  display.stopscroll();
-
-  display.clearDisplay();
-
-  display.setTextSize(2); // Draw 2X-scale text
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println(bluetoothinfo);
-  display.display();      // Show initial text
-  delay(100);
-
-  // Scroll in various directions, pausing in-between:
-  display.startscrollright(0x00, 0x0F);
-  // delay(2000);
-  // display.stopscroll();
-  // delay(1000);
-  // display.startscrollleft(0x00, 0x0F);
-  // delay(2000);
-  // display.stopscroll();
-  // delay(1000);
-  // display.startscrolldiagright(0x00, 0x07);
-  // delay(2000);
-  // display.startscrolldiagleft(0x00, 0x07);
-  // delay(2000);
-  // display.stopscroll();
-  // delay(1000);
-}
-
-// Chirps
-
 const int GPIO_RESET_PIN = 14;
 
-// WIFI
-// This chip only has a 2.4GHz radio so only 2.4GHz networks will work
-const char* wifi_ssid = "2.4-Portlandia";
-const char* wifi_password = "rulefromorbit";
+// Wifi Settings
+const char* SSID     = "<SSID>";     // your network SSID (name of wifi network)
+const char* WIFIPASS = "<PASSWORD>"; // your network password
+// Connect to:
+const char*  SERVER = "192.168.0.173";  // Server URL
+const int SERVER_PORT = 8443;
+// const char*  server_ca = ""; // to verify cert
 
-//WiFiServer server(80);
+// You can use x.509 client certificates if you want
+//const char* test_client_key = "";   //to verify the client
+//const char* test_client_cert = "";  //to verify the client
 
-// Bluetooth:
+WiFiClientSecure client;
 
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
+void setupWifi() {
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(SSID);
+  WiFi.begin(SSID, WIFIPASS);
 
-#define SERVICE_UUID        "9d0fda08-6347-4f9d-9c57-da70a0b6b8cd"
-#define CHARACTERISTIC_UUID "1e1aee34-f68a-4758-9a9c-5bd7f5d1eb8d"
-
-class OurBLECallbacks : public BLECharacteristicCallbacks {
-public:
-  void onRead(BLECharacteristic* pCharacteristic) {
-    Serial.println("Someone read our BLE data!");
+  // attempt to connect to Wifi network:
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    // wait 1 second for re-trying
+    delay(1000);
   }
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    Serial.println("Someone wrote our BLE data!");
-    strcpy(bluetoothinfo, pCharacteristic->getValue().c_str());
-    Serial.print("bluetooth info: ");
-    Serial.println(bluetoothinfo);
+
+  Serial.print("Connected to ");
+  Serial.println(SSID);
+}
+
+void setupCerts() {
+  //client.setCACert(test_root_ca);
+  //client.setCertificate(test_client_key); // for client verification
+  //client.setPrivateKey(test_client_cert);	// for client verification
+}
+
+void httpsPOST(int moisture, int light) {
+  Serial.println("\nStarting connection to server...");
+  if (!client.connect(SERVER, 8443))
+    Serial.println("Connection failed!");
+  else {
+    Serial.println("Connected to server!");
+    // Make a HTTP request:
+    client.println(String("POST https://") + SERVER + "/metrics?m=" + moisture + "&l=" + light + " HTTP/1.0");
+    //client.println("Host: www.howsmyssl.com");
+    client.println("Connection: close");
+    client.println();
+
+    while (client.connected()) {
+      String line = client.readStringUntil('\n');
+      if (line == "\r") {
+        Serial.println("headers received");
+        break;
+      }
+    }
+    // if there are incoming bytes available
+    // from the server, read them and print them:
+    while (client.available()) {
+      char c = client.read();
+      Serial.write(c);
+    }
+
+    client.stop();
   }
-};
+}
+
+void setupDisplay() {
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+  }
+
+  // Show initial display buffer contents on the screen --
+  // the library initializes this with an Adafruit splash screen.
+  display.display();
+  delay(2000); // Pause for 2 seconds
+}
+
+void displayText(char *text) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println(text);
+  display.display();
+}
+
+void setup() {
+  pinMode(GPIO_RESET_PIN, OUTPUT);
+  digitalWrite(GPIO_RESET_PIN, LOW);
+  Wire.begin(); // begin without an address means "join as master"
+  Serial.begin(9600);
+  setupDisplay();
+
+  // Try some resets to get the chirp to FUCKING BEHAVE:
+  digitalWrite(GPIO_RESET_PIN, HIGH);
+  delay(1000);
+  digitalWrite(GPIO_RESET_PIN, LOW);
+  delay(1000);
+  digitalWrite(GPIO_RESET_PIN, HIGH);
+  delay(1000);
+
+  setupWifi();
+  setupCerts();
+}
 
 void writeI2CRegister8bit(int addr, int value) {
+//  Serial.print("writeI2CRegister8bit: ");
+//  Serial.print(addr);
+//  Serial.print(", ");
+//  Serial.println(value);
   Wire.beginTransmission(addr);
   Wire.write(value);
   Wire.endTransmission();
 }
 
+
+uint8_t readI2CRegister8bit(int addr, int reg) {
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  Wire.endTransmission();
+  delay(1100);
+  unsigned int available = Wire.requestFrom(addr, 1);
+  uint8_t t = Wire.read();
+  return t;
+}
+
 unsigned int readI2CRegister16bit(int addr, int reg) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
-  // Wire.endTransmission();
-  delay(1000);
-  Wire.requestFrom(addr, 2);
-  // Wire.available()    // slave may send less than requested
+  Wire.endTransmission();
+  delay(1100);
+  unsigned int available = Wire.requestFrom(addr, 2);
   unsigned int t = Wire.read() << 8;
   t = t | Wire.read();
   return t;
 }
 
-void setup() {
-  Wire.begin();
-  Serial.begin(9600);
-
-  while (!Serial) {
-    ; // wait for serial port to connect. Needed for native USB port only
-  }
-
-  // Setup Screen!
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
-    Serial.println(F("SSD1306 allocation failed"));
-  }
-  display.display();
-  delay(2000); // Pause for 2 seconds
-  // Clear the buffer
-  display.clearDisplay();
-  testscrolltext();
-
-  writeI2CRegister8bit(0x20, 6); //reset
-
-  // So we wired a GPIO pin and we need to set to high to take the chirp out of reset mode:
-  pinMode(GPIO_RESET_PIN, OUTPUT);
-
-//  WiFi.begin(wifi_ssid, wifi_password);
-//
-//  while (WiFi.status() != WL_CONNECTED) {
-//    delay(500);
-//    Serial.print(".");
-//  }
-//
-//  Serial.println(F("WiFi connected"));
-//  Serial.println(F("IP address: "));
-//  Serial.println(WiFi.localIP());
-
-  // Print WiFi MAC address:
-  //printMacAddress();
-
-  // web server setup:
-  //server.begin();
-
-  Serial.println(F("Starting BLE work!"));
-
-  BLEDevice::init("Chicken");
-  BLEServer *pServer = BLEDevice::createServer();
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
-                                         CHARACTERISTIC_UUID,
-                                         BLECharacteristic::PROPERTY_READ |
-                                         BLECharacteristic::PROPERTY_WRITE
-                                       );
-  OurBLECallbacks *callbacks = new OurBLECallbacks();
-
-  pCharacteristic->setValue(bluetoothinfo);
-  pCharacteristic->setCallbacks(callbacks);
-  pService->start();
-  // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
-  pAdvertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-  Serial.println(F("Characteristic defined! Now you can read it in your phone!"));
+int readI2CRegisterSigned16bit(int addr, int reg) {
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  Wire.endTransmission();
+  delay(1100);
+  unsigned int available = Wire.requestFrom(addr, 2);
+  int t = Wire.read() << 8;
+  t = t | Wire.read();
+  return t;
 }
 
 void loop() {
-//  digitalWrite(GPIO_RESET_PIN, HIGH);
-//  Serial.print("Checking capacitance: ");
-//  Serial.println(readI2CRegister16bit(0x20, 0)); //read capacitance register
-//  Serial.print("Checking temperature: ");
-//  Serial.println(readI2CRegister16bit(0x20, 5)); //temperature register
-//  Serial.print("Checking light: ");
-//  writeI2CRegister8bit(0x20, 3); //request light measurement 
-//  Serial.println(readI2CRegister16bit(0x20, 4)); //read light register
+  // int raw_temp = readI2CRegister16bit(0x18, 5);
 
-//  // scan for existing networks:
-//  Serial.println("Scanning available networks...");
-//  listNetworks();
-//  delay(10000);
+  // float c = raw_temp & 0x0FFF; // ignore critical flags
+  // c /=  16.0;
+  // if (raw_temp & 0x1000) {
+  //   c -= 256; // check if negative
+  // }
 
-//  Serial.println(F("WiFi connected"));
-//  Serial.println(F("IP address: "));
-//  Serial.println(WiFi.localIP());
+  // float f = c * 9.0 / 5.0 + 32;
 
-  Serial.print("bluetooth storage: ");
-  Serial.println(bluetoothinfo);
+  // Serial.print("MCP9808 temp: ");
+  // Serial.print(c);
+  // Serial.print("*C, ");
+  // Serial.print(f);
+  // Serial.print("*F");
+  // Serial.println();
 
-  delay(10000);
+  // MUCK with the MUX
+  /*
+   Get default value of Analog Mux Register which is:
+  */
+  const int AD_READ_MUX_REGISTER = 0x07;
+  const int AD_WRITE_MUX_REGISTER = 0x27;
+  const int AD_CONTROL_STATUS_REGISTER = 0x06;
 
-  testscrolltext();
+  const int AD_CAPACITANCE = 1;
 
-  // Print WiFi MAC address:
-  //printMacAddress();
+  Serial.print("AD MUX START VALUE: ");
+  Serial.println(readI2CRegister8bit(0x20, AD_READ_MUX_REGISTER), HEX);
 
-  //httpServer();
+  Serial.print("AD CONSTROL STATUS VALUE: ");
+  Serial.println(readI2CRegister8bit(0x20, AD_CONTROL_STATUS_REGISTER), HEX);
+//
+//  int thing = readI2CRegister16bit(0x18, 1);
+//  Serial.print("thing: ");
+//  Serial.print(thing, BIN);
+//  Serial.println();
+
+  int cap = readI2CRegister16bit(0x20, 0);
+  Serial.print("capacitance: ");
+  Serial.println(cap); //read capacitance register
+  int chirp_temp = readI2CRegister16bit(0x20, 5);
+  Serial.print("Checking temperature: ");
+  Serial.println(chirp_temp); //temperature register
+
+  writeI2CRegister8bit(0x20, 3); //request light measurement
+  delay(9000);                   //this can take a while
+  int light = readI2CRegisterSigned16bit(0x20, 4);
+  Serial.print("light: ");
+  Serial.println(light); //read light register
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  // display.print("temp: ");
+  // display.print(c);
+  // display.print("*C, ");
+  // display.print(f);
+  int reset = digitalRead(GPIO_RESET_PIN);
+  display.print("RESET: ");
+  display.print(reset);
+  display.print("*F, Capacitance: ");
+  display.print(cap);
+  display.print(", Temp: ");
+  display.print(chirp_temp);
+  display.print(", Light: ");
+  display.println(light);
+  display.display();
+
+  delay(500);
+
+  httpsPOST(cap, light);
 }
-
-/* void printMacAddress() {
-  // the MAC address of your Wifi shield
-  byte mac[6];
-
-  // print your MAC address:
-  WiFi.macAddress(mac);
-  Serial.print("MAC: ");
-  Serial.print(mac[5], HEX);
-  Serial.print(":");
-  Serial.print(mac[4], HEX);
-  Serial.print(":");
-  Serial.print(mac[3], HEX);
-  Serial.print(":");
-  Serial.print(mac[2], HEX);
-  Serial.print(":");
-  Serial.print(mac[1], HEX);
-  Serial.print(":");
-  Serial.println(mac[0], HEX);
-} */
-
-/* void httpServer() {
-  WiFiClient client = server.available();   // listen for incoming clients
-
-  if (client) {                             // if you get a client,
-    Serial.println("New Client.");           // print a message out the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected()) {            // loop while the client's connected
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        if (c == '\n') {                    // if the byte is a newline character
-
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println();
-
-            // the content of the HTTP response follows the header:
-            client.print("Click <a href=\"/H\">here</a> to turn the LED on pin 5 on.<br>");
-            client.print("Click <a href=\"/L\">here</a> to turn the LED on pin 5 off.<br>");
-
-            // The HTTP response ends with another blank line:
-            client.println();
-            // break out of the while loop:
-            break;
-          } else {    // if you got a newline, then clear currentLine:
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
-
-        // Check to see if the client request was "GET /H" or "GET /L":
-        if (currentLine.endsWith("GET /H")) {
-          digitalWrite(5, HIGH);               // GET /H turns the LED on
-        }
-        if (currentLine.endsWith("GET /L")) {
-          digitalWrite(5, LOW);                // GET /L turns the LED off
-        }
-      }
-    }
-    // close the connection:
-    client.stop();
-    Serial.println("Client Disconnected.");
-  }
-}
- */
-
