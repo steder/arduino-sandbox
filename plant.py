@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import collections
 import json
 
 from flask import (Flask,
@@ -14,7 +15,8 @@ HOST = '0.0.0.0'
 PORT = 5000
 
 
-METRICS = []
+# prevent this from eating all my memory:
+METRICS = collections.deque(maxlen=10)
 
 
 @app.route("/")
@@ -25,14 +27,32 @@ def hello():
 
 @app.route("/metrics", methods=["GET"])
 def metrics():
-    return json.dumps({"data":METRICS[0:10]}), 200
+    data = {
+        "moisture": [],
+        "temperature": [],
+        "light": [],
+    }    
+    for m, t, l in METRICS:
+        data['moisture'].append(m)
+        data['temperature'].append(t)
+        data['light'].append(l)
+    return app.response_class(
+        json.dumps(data), status=200,
+        mimetype='application/json'
+    )
 
 
 @app.route("/metrics", methods=["POST"])
 def new_metric():
     moisture = request.args.get('m', None)
+    if moisture:
+        moisture = int(moisture)
     temperature = request.args.get('t', None)
+    if temperature:
+        temperature = int(temperature)
     light = request.args.get('l', None)
+    if light:
+        light = int(light)
     METRICS.append(
         (moisture, temperature, light)
     )
