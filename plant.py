@@ -19,6 +19,10 @@ PORT = 5000
 METRICS = collections.deque(maxlen=10)
 
 
+# TODO Add a decorator that 403s non-http (X-Forwarded-Proto != https)
+# requests to tell the user to retry the request on HTTPS.
+
+
 @app.route("/")
 def hello():
     context = {}
@@ -31,7 +35,7 @@ def metrics():
         "moisture": [],
         "temperature": [],
         "light": [],
-    }    
+    }
     for m, t, l in METRICS:
         data['moisture'].append(m)
         data['temperature'].append(t)
@@ -49,7 +53,7 @@ def new_metric():
         moisture = int(moisture)
     temperature = request.args.get('t', None)
     if temperature:
-        temperature = int(temperature)
+        temperature = float(temperature)
     light = request.args.get('l', None)
     if light:
         light = int(light)
